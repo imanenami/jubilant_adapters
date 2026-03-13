@@ -1,0 +1,56 @@
+[project]
+name = "jubilant_adapters"
+version = "0.1.0"
+description = "Adapters for Jubilant Charm Testing Library"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "jubilant>=1.7.0",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+exclude = [".git", "__pycache__", ".tox", "build", "dist", "*.egg_info", "venv"]
+
+[tool.ruff.lint]
+select = ["F", "E", "W", "C", "N", "R", "D", "I001", "UP"]
+# Ignore W503, E501 because using black creates errors with this
+# Ignore D107 Missing docstring in __init__
+ignore = ["E501", "D107", "D417"]
+fixable = ["ALL"]
+
+[tool.ruff.lint.pycodestyle]
+max-doc-length = 99
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.codespell]
+ignore-words=".codespellignore"
+
+[tool.pyright]
+include = ["main.py", "src"]
+pythonVersion = "3.12"
+pythonPlatform = "All"
+typeCheckingMode = "basic"
+reportIncompatibleMethodOverride = false
+reportMissingModuleSource = true
+stubPath = ""
+
+[dependency-groups]
+dev = [
+    "coverage>=7.13.4",
+    "pyright>=1.1.408",
+    "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
+]
