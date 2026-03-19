@@ -56,6 +56,11 @@ class RelationInfo:
         return [Endpoint(self.endpoint), Endpoint(self.related_endpoint)]
 
     @property
+    def id(self) -> int | None:
+        """Relation Identifier."""
+        return self.raw.get("relation-id")
+
+    @property
     def is_peer(self) -> bool:
         """Is this a peer relation?"""
         apps = {unit_name_to_app(unit_name) for unit_name in self.raw["related-units"]}

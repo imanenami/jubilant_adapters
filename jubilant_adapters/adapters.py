@@ -280,6 +280,17 @@ class ApplicationAdapter:
         """Remove a relation to another application."""
         self._juju.remove_relation(local_relation, remote_relation)
 
+    def scale(self, scale: int | None = None, scale_change: int | None = None):
+        """Set or adjust the scale of this (K8s) application."""
+        if not any([scale, scale_change]):
+            raise ValueError("Must provide either scale or scale_change")
+
+        if scale_change:
+            scale = len(self._juju.status().apps[self.name].units) + scale_change
+            scale = max(1, scale)
+
+        self._juju.cli("scale-appication", self.name, f"{scale}")
+
     def set_config(self, config: Mapping[str, ConfigValue]) -> None:
         """Set configuration options for this application."""
         self._juju.config(self.name, values=config)
@@ -493,15 +504,21 @@ class ModelAdapter:
 
         return ret
 
-    def relate(self, relation1: str, relation2: str) -> None:
-        """The relate function is deprecated in favor of integrate.
-
-        The logic is the same.
-        """
+    def integrate(self, relation1: str, relation2: str) -> RelationInfo:
+        """The relate function is deprecated in favor of integrate."""
+        relations_ids_pre = {relation.id for relation in self.relations}
         self._juju.integrate(relation1, relation2)
+        logger.debug("Waiting for relation to be added.")
+        self._juju.wait(
+            lambda status: len(list(self.relations)) > len(relations_ids_pre), successes=1, delay=5
+        )
+        relations_post = list(self.relations)
+        relation_ids_post = {relation.id for relation in relations_post}
+        rel_id = next(iter(relation_ids_post - relation_ids_post))
+        return next(iter(relation for relation in relations_post if relation.id == rel_id))
 
-    add_relation = relate
-    integrate = relate
+    add_relation = integrate
+    relate = integrate
 
     def remove_application(
         self,
