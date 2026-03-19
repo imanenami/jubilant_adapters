@@ -1,2 +1,3 @@
 # jubilant_adapters
-Adapters for Jubilant Charm Testing Library
+
+Adapters and legacy `pytest-operator` & `python-libjuju` extensions for Jubilant Charm Testing Library.
