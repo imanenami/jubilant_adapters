@@ -4,24 +4,26 @@ import logging
 from dataclasses import dataclass
 from typing import Any, TypedDict
 
-from utils import unit_name_to_app
+from .utils import unit_name_to_app
 
 logger = logging.getLogger(__name__)
 
 
-TConstraints = Any
-TDevices = Any
-ShowUnitOutput = dict
+class CT:
+    """Python types defined for compatibility reasons."""
 
+    Constraints = Any
+    Devices = Any
+    ShowUnitOutput = dict
 
-class TStorageInfo(TypedDict):
-    """JSON type of Storage returned by `juju list-storage`."""
+    class StorageInfo(TypedDict):
+        """JSON type of Storage returned by `juju list-storage`."""
 
-    key: str
-    attachments: dict[str, dict]
-    kind: str
-    life: str
-    persistent: bool
+        key: str
+        attachments: dict[str, dict]
+        kind: str
+        life: str
+        persistent: bool
 
 
 @dataclass
@@ -52,6 +54,11 @@ class RelationInfo:
     def endpoints(self) -> list[Endpoint]:
         """Relation endpoints."""
         return [Endpoint(self.endpoint), Endpoint(self.related_endpoint)]
+
+    @property
+    def id(self) -> int | None:
+        """Relation Identifier."""
+        return self.raw.get("relation-id")
 
     @property
     def is_peer(self) -> bool:

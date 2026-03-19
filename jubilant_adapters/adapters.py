@@ -13,7 +13,6 @@ from os import PathLike
 from pathlib import Path
 from typing import Any, Literal
 
-import typedefs as t
 import yaml
 from jubilant import (
     ConfigValue,
@@ -25,7 +24,9 @@ from jubilant import (
     any_error,
 )
 from jubilant.statustypes import UnitStatus
-from utils import all_active_idle, all_statuses_are
+
+from .typedefs import CT, RelationInfo
+from .utils import all_active_idle, all_statuses_are
 
 logger = logging.getLogger(__name__)
 
@@ -147,14 +148,14 @@ class UnitAdapter:
         """Check to see if this unit is the leader."""
         return self.status.leader
 
-    def relation_info(self) -> dict[int, t.RelationInfo]:
+    def relation_info(self) -> dict[int, RelationInfo]:
         """Return the unit `relation-info` for `juju show-unit` output."""
         ret = {}
         for item in self.show().get("relation-info", []):
             if not (_id := item.get("relation-id")):
                 continue
 
-            ret[_id] = t.RelationInfo(
+            ret[_id] = RelationInfo(
                 app=self.app,
                 endpoint=item.get("endpoint", ""),
                 related_endpoint=item.get("related-endpoint", ""),
@@ -175,7 +176,7 @@ class UnitAdapter:
             failed = True
         return ActionAdapter(task, failed=failed)
 
-    def show(self) -> t.ShowUnitOutput:
+    def show(self) -> CT.ShowUnitOutput:
         """Return the parsed `show-unit` command."""
         raw = self._juju.cli("show-unit", "--format", "json", self.name)
         return json.loads(raw).get(self.name, {})
@@ -279,12 +280,23 @@ class ApplicationAdapter:
         """Remove a relation to another application."""
         self._juju.remove_relation(local_relation, remote_relation)
 
+    def scale(self, scale: int | None = None, scale_change: int | None = None):
+        """Set or adjust the scale of this (K8s) application."""
+        if not any([scale, scale_change]):
+            raise ValueError("Must provide either scale or scale_change")
+
+        if scale_change:
+            scale = len(self._juju.status().apps[self.name].units) + scale_change
+            scale = max(1, scale)
+
+        self._juju.cli("scale-appication", self.name, f"{scale}")
+
     def set_config(self, config: Mapping[str, ConfigValue]) -> None:
         """Set configuration options for this application."""
         self._juju.config(self.name, values=config)
 
     @property
-    def relations(self) -> Iterable[t.RelationInfo]:
+    def relations(self) -> Iterable[RelationInfo]:
         """Application relations."""
         return ModelAdapter.get_relations(self.units).values()
 
@@ -375,7 +387,7 @@ class ModelAdapter:
         bind: dict[str, str] = {},  # noqa
         channel: str | None = None,
         config: dict[str, ConfigValue] | None = None,
-        constraints: t.TDevices = None,
+        constraints: CT.Devices = None,
         force: bool = False,
         num_units: int = 1,
         overlays: list[str] | None = None,
@@ -385,7 +397,7 @@ class ModelAdapter:
         revision: str | int | None = None,
         storage: Mapping[str, str] | None = None,
         to: str | None = None,
-        devices: t.TDevices = None,
+        devices: CT.Devices = None,
         trust: bool = False,
         attach_storage: list[str] | None = None,
     ) -> None:
@@ -482,7 +494,7 @@ class ModelAdapter:
 
         return LibjujuStatusDict(self._juju.status())
 
-    def list_storage(self, filesystem: bool = False, volume: bool = False) -> list[t.TStorageInfo]:
+    def list_storage(self, filesystem: bool = False, volume: bool = False) -> list[CT.StorageInfo]:
         """Lists storage details."""
         raw = self._juju.cli("list-storage", "--format", "json")
         json_ = json.loads(raw)
@@ -492,15 +504,21 @@ class ModelAdapter:
 
         return ret
 
-    def relate(self, relation1: str, relation2: str) -> None:
-        """The relate function is deprecated in favor of integrate.
-
-        The logic is the same.
-        """
+    def integrate(self, relation1: str, relation2: str) -> RelationInfo:
+        """Create the `relation1` <-> `relation2` integration."""
+        relation_ids_pre = {relation.id for relation in self.relations}
         self._juju.integrate(relation1, relation2)
+        logger.debug("Waiting for relation to be added.")
+        self._juju.wait(
+            lambda status: len(list(self.relations)) > len(relation_ids_pre), successes=1, delay=5
+        )
+        relations_post = list(self.relations)
+        relation_ids_post = {relation.id for relation in relations_post}
+        rel_id = next(iter(relation_ids_post - relation_ids_pre))
+        return next(iter(relation for relation in relations_post if relation.id == rel_id))
 
-    add_relation = relate
-    integrate = relate
+    add_relation = integrate
+    relate = integrate
 
     def remove_application(
         self,
@@ -647,7 +665,7 @@ class ModelAdapter:
         return {machine: MachineAdapter(machine, self._juju) for machine in machines}
 
     @property
-    def relations(self) -> Iterable[t.RelationInfo]:
+    def relations(self) -> Iterable[RelationInfo]:
         """Return a map of relation-id:Relation for all relations currently in the model."""
         return self.get_relations(self.units.values()).values()
 
@@ -661,7 +679,7 @@ class ModelAdapter:
         return ret
 
     @staticmethod
-    def get_relations(units: Iterable[UnitAdapter]) -> dict[int, t.RelationInfo]:
+    def get_relations(units: Iterable[UnitAdapter]) -> dict[int, RelationInfo]:
         """Return a map of relation-id: RelationInfo for all relations currently in the model."""
         ret = {}
         for unit in units:
@@ -722,8 +740,12 @@ class LegacyExtensions:
         bases_index: int | None = None,
         verbosity: Literal["quiet", "brief", "verbose", "debug", "trace"] | None = None,
         return_all: bool = False,
+        use_cache: bool = False,
     ) -> Path | list[Path]:
         """Builds a single charm."""
+        if use_cache:
+            return self._get_cached_build(charm_path=charm_path)
+
         charms_dst_dir = Path(tempfile.mkdtemp())
         charms_dst_dir.mkdir(exist_ok=True)
         charm_path = Path(charm_path)

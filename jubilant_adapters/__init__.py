@@ -7,12 +7,13 @@ from collections.abc import Generator, Mapping
 from contextlib import contextmanager
 from typing import Any
 
-from adapters import LegacyExtensions
 from jubilant import (
     CLIError,
     ConfigValue,
     Juju,
 )
+
+from .adapters import LegacyExtensions
 
 logger = logging.getLogger(__name__)
 
