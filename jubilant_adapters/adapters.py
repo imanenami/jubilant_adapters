@@ -289,7 +289,7 @@ class ApplicationAdapter:
             scale = len(self._juju.status().apps[self.name].units) + scale_change
             scale = max(1, scale)
 
-        self._juju.cli("scale-appication", self.name, f"{scale}")
+        self._juju.cli("scale-application", self.name, f"{scale}")
 
     def set_config(self, config: Mapping[str, ConfigValue]) -> None:
         """Set configuration options for this application."""
