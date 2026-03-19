@@ -505,16 +505,16 @@ class ModelAdapter:
         return ret
 
     def integrate(self, relation1: str, relation2: str) -> RelationInfo:
-        """The relate function is deprecated in favor of integrate."""
-        relations_ids_pre = {relation.id for relation in self.relations}
+        """Create the `relation1` <-> `relation2` integration."""
+        relation_ids_pre = {relation.id for relation in self.relations}
         self._juju.integrate(relation1, relation2)
         logger.debug("Waiting for relation to be added.")
         self._juju.wait(
-            lambda status: len(list(self.relations)) > len(relations_ids_pre), successes=1, delay=5
+            lambda status: len(list(self.relations)) > len(relation_ids_pre), successes=1, delay=5
         )
         relations_post = list(self.relations)
         relation_ids_post = {relation.id for relation in relations_post}
-        rel_id = next(iter(relation_ids_post - relation_ids_post))
+        rel_id = next(iter(relation_ids_post - relation_ids_pre))
         return next(iter(relation for relation in relations_post if relation.id == rel_id))
 
     add_relation = integrate
