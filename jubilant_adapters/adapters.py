@@ -1,119 +1,65 @@
-# Copyright 2026 Canonical Ltd.
-# See LICENSE file for licensing details.
-
 """Adapters which use Jubilant to provide libjuju-compliant API."""
 
 import json
 import logging
-import secrets
+import re
 import subprocess
-from collections.abc import Callable, Generator, Iterable, Mapping
+import tempfile
+from collections import UserDict, defaultdict
+from collections.abc import Callable, Iterable, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass
 from functools import cached_property
-from typing import Any, TypedDict
+from os import PathLike
+from pathlib import Path
+from typing import Any, Literal
 
+import typedefs as t
+import yaml
 from jubilant import (
     ConfigValue,
     Juju,
     Status,
     Task,
     TaskError,
-    all_active,
     all_agents_idle,
     any_error,
 )
 from jubilant.statustypes import UnitStatus
+from utils import all_active_idle, all_statuses_are
 
 logger = logging.getLogger(__name__)
 
 
-TConstraints = Any
-TDevices = Any
-ShowUnitOutput = dict
+def gather(*calls: Any) -> None:
+    """Placeholder function to replace asyncio.gather calls."""
+    pass
 
 
-class TStorageInfo(TypedDict):
-    """JSON type of Storage returned by `juju list-storage`."""
+class LibjujuStatusDict(UserDict):
+    """Legacy status object conformant with libjuju model."""
 
-    key: str
-    attachments: dict[str, dict]
-    kind: str
-    life: str
-    persistent: bool
+    def __init__(self, status: Status):
+        super().__init__()
+        self._jubilant_status = status
+        self.data = self._transform()
 
+    def _transform(self) -> dict[str, Any]:
+        status = defaultdict(lambda: {})
+        for app, app_status in self._jubilant_status.apps.items():
+            status["applications"][app] = self.obj_to_dict(app_status)
+            status["applications"][app]["units"] = {}
+            for unit, unit_status in app_status.units.items():
+                status["applications"][app]["units"][unit] = self.obj_to_dict(unit_status)
+        return status
 
-@dataclass
-class Endpoint:
-    """Data model for endpoint info of a relation."""
-
-    name: str
-
-
-@dataclass
-class RequiresInfo:
-    """Data model for requires info of a relation."""
-
-    application_name: str
-    name: str
-
-
-@dataclass
-class RelationInfo:
-    """Data model for `juju show-unit`:`relation-info` section."""
-
-    app: str
-    endpoint: str
-    related_endpoint: str
-    raw: dict[str, Any]
-
-    @property
-    def endpoints(self) -> list[Endpoint]:
-        """Relation endpoints."""
-        return [Endpoint(self.endpoint), Endpoint(self.related_endpoint)]
-
-    @property
-    def is_peer(self) -> bool:
-        """Is this a peer relation?"""
-        apps = {_unit_name_to_app(unit_name) for unit_name in self.raw["related-units"]}
-        return not bool(apps - {self.app})
-
-    @property
-    def requires(self) -> RequiresInfo:
-        """Return the requires side info of the relation."""
-        name = self.raw.get("related-endpoint", "")
-        app = ""
-        if related_units := self.raw.get("related-units", {}):
-            app = _unit_name_to_app(next(iter(related_units)))
-
-        return RequiresInfo(name=name, application_name=app)
-
-
-def _unit_name_to_app(name: str) -> str:
-    """Convert unit name to app name."""
-    return name.split("/")[0]
-
-
-def all_statuses_are(expected: str, status: Status, apps: Iterable[str]) -> bool:
-    """Return True if all units and apps have the `expected` status."""
-    if not apps:
-        apps = status.apps
-
-    for app in apps:
-        app_info = status.apps.get(app)
-        if app_info is None:
-            return False
-        if app_info.app_status.current != expected:
-            return False
-        for unit_info in status.get_units(app).values():
-            if unit_info.workload_status.current != expected:
-                return False
-    return True
-
-
-def all_active_idle(status: Status, *apps: str) -> bool:
-    """Return True if all units are active|idle."""
-    return all_agents_idle(status, *apps) and all_active(status, *apps)
+    @staticmethod
+    def obj_to_dict(obj: Any) -> dict[str, Any]:
+        """Return a dict repr. of an object."""
+        ret = {}
+        for k in dir(obj):
+            if not k.startswith("_"):
+                ret[k.replace("_", "-")] = getattr(obj, k)
+        return ret
 
 
 class ActionAdapter:
@@ -129,6 +75,45 @@ class ActionAdapter:
         return self
 
 
+class MachineAdapter:
+    """Machine model adapter for libjuju."""
+
+    def __init__(self, id_: str, juju: Juju):
+        self.id = id_
+        self._juju = juju
+
+    def destroy(self, force=False):
+        """Remove this machine from the model."""
+        cmd_args = ["remove-machine", self.id]
+        if force:
+            cmd_args.append("--force")
+        self._juju.cli(*cmd_args)
+
+    remove = destroy
+
+    def ssh(
+        self,
+        command,
+        user="ubuntu",
+        proxy=False,
+        ssh_opts=None,
+        wait_for_active=False,
+        timeout=None,
+    ):
+        """Execute a command over SSH on this machine."""
+        raise NotImplementedError("ssh method is not implemented yet.")
+
+    @property
+    def dns_name(self) -> str | None:
+        """Get the DNS name for this machine."""
+        return self._juju.status().machines[self.id].dns_name
+
+    @property
+    def hostname(self) -> str | None:
+        """Get the hostname for this machine, e.g. juju-8149c9-2."""
+        return self._juju.status().machines[self.id].hostname
+
+
 class UnitAdapter:
     """Unit model adapter for libjuju."""
 
@@ -142,33 +127,34 @@ class UnitAdapter:
         """Update unit status."""
         self.status = self._juju.status().apps[self.app].units[self.name]
 
+    def destroy(
+        self,
+        destroy_storage: bool = False,
+        dry_run: bool = False,
+        force: bool = False,
+        max_wait: float | None = None,
+    ):
+        """Destroy this unit."""
+        if dry_run:
+            return
+
+        if max_wait:
+            logger.warning("UnitAdapter::destroy does not support max_wait arg.")
+
+        self._juju.remove_unit(self.name, destroy_storage=destroy_storage, force=force)
+
     def is_leader_from_status(self) -> bool:
         """Check to see if this unit is the leader."""
         return self.status.leader
 
-    def run_action(self, action_name: str, **params) -> ActionAdapter:
-        """Run an action on this unit."""
-        failed = False
-        try:
-            task = self._juju.run(self.name, action=action_name, params=dict(params))
-        except TaskError as e:
-            task = e.task
-            failed = True
-        return ActionAdapter(task, failed=failed)
-
-    def show(self) -> ShowUnitOutput:
-        """Return the parsed `show-unit` command."""
-        raw = self._juju.cli("show-unit", "--format", "json", self.name)
-        return json.loads(raw).get(self.name, {})
-
-    def relation_info(self) -> dict[int, RelationInfo]:
+    def relation_info(self) -> dict[int, t.RelationInfo]:
         """Return the unit `relation-info` for `juju show-unit` output."""
         ret = {}
         for item in self.show().get("relation-info", []):
             if not (_id := item.get("relation-id")):
                 continue
 
-            ret[_id] = RelationInfo(
+            ret[_id] = t.RelationInfo(
                 app=self.app,
                 endpoint=item.get("endpoint", ""),
                 related_endpoint=item.get("related-endpoint", ""),
@@ -176,6 +162,29 @@ class UnitAdapter:
             )
 
         return ret
+
+    remove = destroy
+
+    def run_action(self, action_name: str, **params) -> ActionAdapter:
+        """Run an action on this unit."""
+        failed = False
+        try:
+            task = self._juju.run(self.name, action=action_name, params=dict(params), wait=600.0)
+        except TaskError as e:
+            task = e.task
+            failed = True
+        return ActionAdapter(task, failed=failed)
+
+    def show(self) -> t.ShowUnitOutput:
+        """Return the parsed `show-unit` command."""
+        raw = self._juju.cli("show-unit", "--format", "json", self.name)
+        return json.loads(raw).get(self.name, {})
+
+    @property
+    def machine(self) -> MachineAdapter:
+        """Return the machine which hosts this unit."""
+        self._update_status()
+        return MachineAdapter(self.status.machine, self._juju)
 
     @property
     def public_address(self) -> str:
@@ -207,18 +216,62 @@ class ApplicationAdapter:
         count: int = 1,
         to: str | Iterable[str] | None = None,
         attach_storage: Iterable[str] = [],
-    ) -> None:
+    ) -> Iterable[UnitAdapter]:
         """Add one or more units to this application."""
         _attach_storage = attach_storage if attach_storage else None
+        units_pre = set(self._juju.status().apps[self.name].units)
         self._juju.add_unit(self.name, num_units=count, to=to, attach_storage=_attach_storage)
+        self._juju.wait(lambda status: len(status.apps[self.name].units) == len(units_pre) + count)
+        status_post = self._juju.status()
+        units_post = set(status_post.apps[self.name].units)
+        added_units = units_post - units_pre
+        return [
+            UnitAdapter(u, self.name, status_post.apps[self.name].units[u], self._juju)
+            for u in added_units
+        ]
 
     add_units = add_unit
+
+    def destroy(
+        self, destroy_storage: bool = False, force: bool = False, no_wait: bool = False
+    ) -> None:
+        """Destroy the application."""
+        self._juju.remove_application(self.name, destroy_storage=destroy_storage, force=force)
+
+        if no_wait:
+            return
+
+        self._juju.wait(
+            lambda status: self.name not in status.apps,
+            timeout=1000,
+        )
 
     def destroy_unit(self, *unit_names: str) -> None:
         """Destroy units by name."""
         self._juju.remove_unit(*unit_names, destroy_storage=True)
 
     destroy_units = destroy_unit
+
+    def refresh(
+        self,
+        channel: str | None = None,
+        force: bool = False,
+        force_series: bool = False,
+        force_units: bool = False,
+        path: Path | str | None = None,
+        resources: dict[str, str] | None = None,
+        revision: int | None = None,
+        switch: str | None = None,
+    ):
+        """Refresh the charm for this application."""
+        self._juju.refresh(
+            self.name,
+            channel=channel,
+            force=force,
+            path=path,
+            resources=resources,
+            revision=revision,
+        )
 
     def remove_relation(
         self, local_relation: str, remote_relation: str, block_until_done: bool = False
@@ -231,7 +284,7 @@ class ApplicationAdapter:
         self._juju.config(self.name, values=config)
 
     @property
-    def relations(self) -> Iterable[RelationInfo]:
+    def relations(self) -> Iterable[t.RelationInfo]:
         """Application relations."""
         return ModelAdapter.get_relations(self.units).values()
 
@@ -244,6 +297,11 @@ class ApplicationAdapter:
             for unit_name, unit_status in units.items()
         ]
 
+    @property
+    def status(self) -> str:
+        """Return current app status."""
+        return self._juju.status().apps[self.name].app_status.current
+
 
 class ModelAdapter:
     """Adapter for libjuju `Model` objects."""
@@ -251,6 +309,25 @@ class ModelAdapter:
     def __init__(self, juju: Juju, wait_delay: float = 3.0):
         self._juju = juju
         self._delay = wait_delay
+
+    def add_machine(
+        self,
+        spec: str | None = None,
+        constraints: list[str] | None = None,
+        disks: list[str] | None = None,
+        series: str | None = None,
+    ) -> None:
+        """Start a new, empty machine."""
+        cmd_args = []
+        if series:
+            cmd_args += ["--series", series]
+        if constraints:
+            cmd_args += ["--constraints", " ".join(constraints)]
+        if disks:
+            cmd_args += ["--disks", " ".join(disks)]
+        if spec:
+            cmd_args += [spec]
+        self._juju.cli("add-machine", *cmd_args)
 
     def add_secret(
         self, name: str, data_args: Iterable[str], file: str = "", info: str = ""
@@ -265,7 +342,15 @@ class ModelAdapter:
         :param file str: A path to a yaml file containing secret key values.
         :param info str: The secret description.
         """
-        pass
+        if file:
+            raise NotImplementedError("file argument is not supported.")
+
+        content = {}
+        for arg in data_args:
+            k, v = arg.split("=")
+            content[k] = v
+
+        self._juju.add_secret(name, content=content, info=info)
 
     def block_until(
         self, *conditions: Callable, timeout: float | None = None, wait_period: float = 0.5
@@ -290,7 +375,7 @@ class ModelAdapter:
         bind: dict[str, str] = {},  # noqa
         channel: str | None = None,
         config: dict[str, ConfigValue] | None = None,
-        constraints: TDevices = None,
+        constraints: t.TDevices = None,
         force: bool = False,
         num_units: int = 1,
         overlays: list[str] | None = None,
@@ -300,7 +385,7 @@ class ModelAdapter:
         revision: str | int | None = None,
         storage: Mapping[str, str] | None = None,
         to: str | None = None,
-        devices: TDevices = None,
+        devices: t.TDevices = None,
         trust: bool = False,
         attach_storage: list[str] | None = None,
     ) -> None:
@@ -380,7 +465,24 @@ class ModelAdapter:
         """Destroy units by name."""
         self._juju.remove_unit(unit_id, destroy_storage=destroy_storage, force=force)
 
-    def list_storage(self, filesystem: bool = False, volume: bool = False) -> list[TStorageInfo]:
+    def get_machines(self) -> list[str]:
+        """Return list of machines in this model."""
+        return list(self.machines.keys())
+
+    def get_status(self, filters=None, utc: bool = False) -> LibjujuStatusDict:
+        """Return the status of the model.
+
+        :param str filters: Optional list of applications, units, or machines
+            to include, which can use wildcards ('*').
+        :param bool utc: Deprecated, display time as UTC in RFC3339 format
+
+        """
+        if any([filters, utc]):
+            raise NotImplementedError("filters and utc arguments are not supported.")
+
+        return LibjujuStatusDict(self._juju.status())
+
+    def list_storage(self, filesystem: bool = False, volume: bool = False) -> list[t.TStorageInfo]:
         """Lists storage details."""
         raw = self._juju.cli("list-storage", "--format", "json")
         json_ = json.loads(raw)
@@ -497,11 +599,13 @@ class ModelAdapter:
 
         def _all_idle_with_status(juju_status: Status, *apps: str):
             return all_agents_idle(juju_status, *apps) and all_statuses_are(
-                status or "active", juju_status, *apps
+                status or "active", juju_status, apps
             )
 
         if status == "active" or wait_for_active:
             wait_func = all_active_idle
+        elif not status:
+            wait_func = all_agents_idle
         else:
             wait_func = _all_idle_with_status
 
@@ -517,6 +621,19 @@ class ModelAdapter:
             successes=int((idle_period) / delay),
         )
 
+        if not wait_for_exact_units:
+            return
+
+        self._juju.wait(
+            lambda status: (
+                sum(len(status.apps[app].units) for app in _apps) == wait_for_exact_units
+            ),
+            error=error_func,
+            delay=delay,
+            timeout=timeout,
+            successes=1,
+        )
+
     @property
     def applications(self) -> dict[str, ApplicationAdapter]:
         """Return a mapping of application name: Application objects."""
@@ -524,7 +641,13 @@ class ModelAdapter:
         return {app: ApplicationAdapter(app, self._juju) for app in apps}
 
     @property
-    def relations(self) -> Iterable[RelationInfo]:
+    def machines(self) -> dict[str, MachineAdapter]:
+        """Return a mapping of machine id: Machine objects."""
+        machines = self._juju.status().machines
+        return {machine: MachineAdapter(machine, self._juju) for machine in machines}
+
+    @property
+    def relations(self) -> Iterable[t.RelationInfo]:
         """Return a map of relation-id:Relation for all relations currently in the model."""
         return self.get_relations(self.units.values()).values()
 
@@ -538,7 +661,7 @@ class ModelAdapter:
         return ret
 
     @staticmethod
-    def get_relations(units: Iterable[UnitAdapter]) -> dict[int, RelationInfo]:
+    def get_relations(units: Iterable[UnitAdapter]) -> dict[int, t.RelationInfo]:
         """Return a map of relation-id: RelationInfo for all relations currently in the model."""
         ret = {}
         for unit in units:
@@ -548,8 +671,8 @@ class ModelAdapter:
         return ret
 
 
-class LibjujuExtensions:
-    """python-libjuju extensions for Jubilant."""
+class LegacyExtensions:
+    """pytest-operator & python-libjuju extensions for Jubilant."""
 
     def __init__(self, juju: Juju):
         self._juju = juju
@@ -567,46 +690,107 @@ class LibjujuExtensions:
         """python-libjuju model adapter."""
         return ModelAdapter(self._juju)
 
-
-class JujuFixture(Juju):
-    """Juju Fixture object with attached adapters."""
-
-    def __init__(self, *, model=None, wait_timeout=3 * 60, cli_binary=None):
-        super().__init__(model=model, wait_timeout=wait_timeout, cli_binary=cli_binary)
-
     @cached_property
-    def ext(self) -> LibjujuExtensions:
-        """python-libjuju extensions."""
-        return LibjujuExtensions(self)
+    def model_full_name(self) -> str:
+        """Return model name."""
+        return f"{self._juju.model}"
 
+    def _get_cached_build(self, charm_path: str | PathLike) -> Path:
+        charm_path = Path(charm_path)
+        architecture = subprocess.run(
+            ["dpkg", "--print-architecture"],
+            capture_output=True,
+            check=True,
+            encoding="utf-8",
+        ).stdout.strip()
+        assert architecture in ("amd64", "arm64")
+        packed_charms = list(charm_path.glob(f"*{architecture}.charm"))
+        if len(packed_charms) == 1:
+            # python-libjuju's model.deploy() & juju deploy files expect local charms
+            # to begin with `./` or `/` to distinguish them from Charmhub charms.
+            return packed_charms[0].resolve(strict=True)
+        if len(packed_charms) > 1:
+            raise ValueError(
+                f"More than one matching .charm file found "
+                f"at {charm_path=} for {architecture=}: {packed_charms}."
+            )
+        raise ValueError(f"Unable to find .charm file for {architecture=} at {charm_path=}")
 
-@contextmanager
-def temp_model_fixture(
-    keep: bool = False,
-    controller: str | None = None,
-    cloud: str | None = None,
-    config: Mapping[str, ConfigValue] | None = None,
-    credential: str | None = None,
-) -> Generator[JujuFixture]:
-    """Context manager to create a temporary model for running tests in."""
-    juju = JujuFixture()
-    model = "jubilant-" + secrets.token_hex(4)  # 4 bytes (8 hex digits) should be plenty
-    juju.add_model(model, cloud=cloud, controller=controller, config=config, credential=credential)
-    try:
-        yield juju
-    finally:
-        if not keep:
-            assert juju.model is not None
-            try:
-                # We're not using juju.destroy_model() here, as Juju doesn't provide a way
-                # to specify the timeout for the entire model destruction operation.
-                args = ["destroy-model", juju.model, "--no-prompt", "--destroy-storage", "--force"]
-                juju._cli(*args, include_model=False, timeout=10 * 60)
-                juju.model = None
-            except subprocess.TimeoutExpired as exc:
-                logger.error(
-                    "timeout destroying model: %s\nStdout:\n%s\nStderr:\n%s",
-                    exc,
-                    exc.stdout,
-                    exc.stderr,
-                )
+    def build_charm(  # noqa: C901
+        self,
+        charm_path: str | Path,
+        bases_index: int | None = None,
+        verbosity: Literal["quiet", "brief", "verbose", "debug", "trace"] | None = None,
+        return_all: bool = False,
+    ) -> Path | list[Path]:
+        """Builds a single charm."""
+        charms_dst_dir = Path(tempfile.mkdtemp())
+        charms_dst_dir.mkdir(exist_ok=True)
+        charm_path = Path(charm_path)
+        charm_abs = Path(charm_path).absolute()
+        metadata_path = charm_path / "metadata.yaml"
+        charmcraft_path = charm_path / "charmcraft.yaml"
+        charmcraft_yaml_exists = charmcraft_path.exists()
+        charm_name = None
+        if charmcraft_yaml_exists:
+            charmcraft_yaml = yaml.safe_load(charmcraft_path.read_text())
+            if "name" in charmcraft_yaml:
+                charm_name = charmcraft_yaml["name"]
+        if charm_name is None:
+            charm_name = yaml.safe_load(metadata_path.read_text())["name"]
+
+        # Handle newer, operator framework charms.
+        cmd = ["charmcraft", "pack"]
+        if bases_index is not None:
+            cmd.append(f"--bases-index={bases_index}")
+        if verbosity:
+            cmd.append(f"--verbosity={verbosity}")
+
+        logger.info(f"Building charm {charm_name}")
+
+        try:
+            stdout = subprocess.check_output(
+                " ".join(cmd), cwd=charm_abs, universal_newlines=True, shell=True
+            )
+            stderr = ""
+            returncode = 0
+        except subprocess.CalledProcessError as e:
+            stdout = e.stdout
+            stderr = e.stderr
+            returncode = e.returncode
+
+        if returncode == 0:
+            logger.info(f"Built charm {charm_name}")
+        else:
+            logger.info(
+                f"Charm build for {charm_name} completed with errors (return code={returncode})"
+            )
+
+        if returncode != 0:
+            m = re.search(r"Failed to build charm.*full execution logs in '([^']+)'", stderr)
+            if m:
+                try:
+                    stderr = Path(m.group(1)).read_text()
+                except FileNotFoundError:
+                    logger.error(f"Failed to read full build log from {m.group(1)}")
+            raise RuntimeError(
+                f"Failed to build charm at path `{charm_path}`:\n"
+                f"    command used: `{' '.join(cmd)}`\n"
+                f"    stdout: {stdout or '(null)'}\n"
+                f"    stderr: {stderr or '(null)'}\n"
+            )
+
+        # If charmcraft.yaml has multiple bases
+        # then multiple charms would be generated, rename them all
+        charms = list(charm_abs.glob(f"{charm_name}*.charm"))
+        for idx, charm_file_src in enumerate(charms):
+            charm_file_dst = charms_dst_dir / charm_file_src.name
+            charms[idx] = charm_file_src.rename(charm_file_dst)
+
+        if not charms:
+            raise FileNotFoundError(f"No such file in '{charm_path}/*.charm'")
+        if charms and not return_all:
+            # Even though we may have multiple *.charm file,
+            # for backwards compatibility we can - only return one.
+            return charms[0]
+        return charms
