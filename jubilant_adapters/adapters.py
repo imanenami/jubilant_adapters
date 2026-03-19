@@ -70,6 +70,7 @@ class ActionAdapter:
         self.task = task
         self.status = "failed" if failed else "succeeded"
         self.results = task.results
+        self.results["return-code"] = task.return_code
 
     def wait(self) -> "ActionAdapter":
         """Mock wait, since jubilant actions are sync."""
