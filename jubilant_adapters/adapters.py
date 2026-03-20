@@ -781,7 +781,8 @@ class LegacyExtensions:
         if use_cache:
             return self._get_cached_build(charm_path=charm_path)
 
-        charms_dst_dir = Path(tempfile.mkdtemp())
+        temp_base = self._juju._temp_dir
+        charms_dst_dir = Path(tempfile.mkdtemp(dir=temp_base, prefix="ja-build-"))
         charms_dst_dir.mkdir(exist_ok=True)
         charm_path = Path(charm_path)
         charm_abs = Path(charm_path).absolute()
