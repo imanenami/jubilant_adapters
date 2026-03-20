@@ -505,6 +505,11 @@ class ModelAdapter:
 
         return LibjujuStatusDict(self._juju.status())
 
+    def grant_secret(self, secret_name: str, application: str, *applications: str):
+        """Grants access to a secret to the specified applications."""
+        apps = [application, *applications]
+        self._juju.grant_secret(secret_name, apps)
+
     def list_storage(self, filesystem: bool = False, volume: bool = False) -> list[CT.StorageInfo]:
         """Lists storage details."""
         raw = self._juju.cli("list-storage", "--format", "json")
