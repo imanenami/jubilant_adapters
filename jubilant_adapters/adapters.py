@@ -106,6 +106,11 @@ class MachineAdapter:
         raise NotImplementedError("ssh method is not implemented yet.")
 
     @property
+    def agent_status(self) -> str:
+        """Return the machine agent status, e.g. 'started', 'running', etc."""
+        return self._juju.status().machines[self.id].machine_status.current
+
+    @property
     def dns_name(self) -> str | None:
         """Get the DNS name for this machine."""
         return self._juju.status().machines[self.id].dns_name
@@ -314,6 +319,11 @@ class ApplicationAdapter:
     def status(self) -> str:
         """Return current app status."""
         return self._juju.status().apps[self.name].app_status.current
+
+    @property
+    def status_message(self) -> str:
+        """Return the app status message."""
+        return self._juju.status().apps[self.name].app_status.message
 
 
 class ModelAdapter:
@@ -555,6 +565,25 @@ class ModelAdapter:
     def set_config(self, config: Mapping[str, ConfigValue]) -> None:
         """Set configuration options for this application."""
         self._juju.model_config(values=config)
+
+    def update_secret(
+        self,
+        name: str,
+        data_args: list[str] | None = None,
+        new_name: str | None = None,
+        file: str = "",
+        info: str | None = None,
+    ):
+        """Update a secret with a list of key values, or info."""
+        if file:
+            raise NotImplementedError("file argument is not supported.")
+
+        content = {}
+        for arg in data_args or []:
+            k, v = arg.split("=")
+            content[k] = v
+
+        self._juju.update_secret(name, content=content, info=info, name=new_name)
 
     # TODO: add support for wait_for_... args
     def wait_for_idle(
