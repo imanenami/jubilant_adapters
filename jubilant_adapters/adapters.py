@@ -184,7 +184,9 @@ class UnitAdapter:
 
     def show(self) -> CT.ShowUnitOutput:
         """Return the parsed `show-unit` command."""
+        logging.getLogger("jubilant").setLevel(logging.ERROR)
         raw = self._juju.cli("show-unit", "--format", "json", self.name)
+        logging.getLogger("jubilant").setLevel(logging.INFO)
         return json.loads(raw).get(self.name, {})
 
     @property
@@ -665,12 +667,13 @@ class ModelAdapter:
         error_func = any_error if raise_on_error else None
         delay = check_freq if check_freq else self._delay
         _apps = apps if apps else list(self._juju.status().apps)
+        _timeout = timeout if timeout else 600.0  # libjuju default
 
         self._juju.wait(
             lambda juju_status: wait_func(juju_status, *_apps),
             error=error_func,
             delay=delay,
-            timeout=timeout,
+            timeout=_timeout,
             successes=int((idle_period) / delay),
         )
 
