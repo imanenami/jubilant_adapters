@@ -106,6 +106,11 @@ class MachineAdapter:
         raise NotImplementedError("ssh method is not implemented yet.")
 
     @property
+    def agent_status(self) -> str:
+        """Return the machine agent status, e.g. 'started', 'running', etc."""
+        return self._juju.status().machines[self.id].machine_status.current
+
+    @property
     def dns_name(self) -> str | None:
         """Get the DNS name for this machine."""
         return self._juju.status().machines[self.id].dns_name
@@ -179,7 +184,9 @@ class UnitAdapter:
 
     def show(self) -> CT.ShowUnitOutput:
         """Return the parsed `show-unit` command."""
+        logging.getLogger("jubilant").setLevel(logging.ERROR)
         raw = self._juju.cli("show-unit", "--format", "json", self.name)
+        logging.getLogger("jubilant").setLevel(logging.INFO)
         return json.loads(raw).get(self.name, {})
 
     @property
@@ -315,6 +322,11 @@ class ApplicationAdapter:
         """Return current app status."""
         return self._juju.status().apps[self.name].app_status.current
 
+    @property
+    def status_message(self) -> str:
+        """Return the app status message."""
+        return self._juju.status().apps[self.name].app_status.message
+
 
 class ModelAdapter:
     """Adapter for libjuju `Model` objects."""
@@ -388,7 +400,7 @@ class ModelAdapter:
         bind: dict[str, str] = {},  # noqa
         channel: str | None = None,
         config: dict[str, ConfigValue] | None = None,
-        constraints: CT.Devices = None,
+        constraints: CT.Constraints = None,
         force: bool = False,
         num_units: int = 1,
         overlays: list[str] | None = None,
@@ -495,6 +507,11 @@ class ModelAdapter:
 
         return LibjujuStatusDict(self._juju.status())
 
+    def grant_secret(self, secret_name: str, application: str, *applications: str):
+        """Grants access to a secret to the specified applications."""
+        apps = [application, *applications]
+        self._juju.grant_secret(secret_name, apps)
+
     def list_storage(self, filesystem: bool = False, volume: bool = False) -> list[CT.StorageInfo]:
         """Lists storage details."""
         raw = self._juju.cli("list-storage", "--format", "json")
@@ -555,6 +572,25 @@ class ModelAdapter:
     def set_config(self, config: Mapping[str, ConfigValue]) -> None:
         """Set configuration options for this application."""
         self._juju.model_config(values=config)
+
+    def update_secret(
+        self,
+        name: str,
+        data_args: list[str] | None = None,
+        new_name: str | None = None,
+        file: str = "",
+        info: str | None = None,
+    ):
+        """Update a secret with a list of key values, or info."""
+        if file:
+            raise NotImplementedError("file argument is not supported.")
+
+        content = {}
+        for arg in data_args or []:
+            k, v = arg.split("=")
+            content[k] = v
+
+        self._juju.update_secret(name, content=content, info=info, name=new_name)
 
     # TODO: add support for wait_for_... args
     def wait_for_idle(
@@ -631,12 +667,13 @@ class ModelAdapter:
         error_func = any_error if raise_on_error else None
         delay = check_freq if check_freq else self._delay
         _apps = apps if apps else list(self._juju.status().apps)
+        _timeout = timeout if timeout else 600.0  # libjuju default
 
         self._juju.wait(
             lambda juju_status: wait_func(juju_status, *_apps),
             error=error_func,
             delay=delay,
-            timeout=timeout,
+            timeout=_timeout,
             successes=int((idle_period) / delay),
         )
 
@@ -747,7 +784,8 @@ class LegacyExtensions:
         if use_cache:
             return self._get_cached_build(charm_path=charm_path)
 
-        charms_dst_dir = Path(tempfile.mkdtemp())
+        temp_base = self._juju._temp_dir
+        charms_dst_dir = Path(tempfile.mkdtemp(dir=temp_base, prefix="ja-build-"))
         charms_dst_dir.mkdir(exist_ok=True)
         charm_path = Path(charm_path)
         charm_abs = Path(charm_path).absolute()

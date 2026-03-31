@@ -3,7 +3,7 @@ name = "jubilant_adapters"
 version = "0.1.0"
 description = "Adapters for Jubilant Charm Testing Library"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = [
     "jubilant>=1.7.0",
 ]
