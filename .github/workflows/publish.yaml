@@ -5,7 +5,7 @@ on: workflow_dispatch
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment: publish-pypi
+    environment: pypi
 
     permissions:
       id-token: write
