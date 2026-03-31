@@ -400,7 +400,7 @@ class ModelAdapter:
         bind: dict[str, str] = {},  # noqa
         channel: str | None = None,
         config: dict[str, ConfigValue] | None = None,
-        constraints: CT.Devices = None,
+        constraints: CT.Constraints = None,
         force: bool = False,
         num_units: int = 1,
         overlays: list[str] | None = None,
