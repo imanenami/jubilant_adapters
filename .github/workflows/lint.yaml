@@ -1,0 +1,34 @@
+on:
+  workflow_call:
+
+jobs:
+  actionlint:
+    name: Lint .github/workflows/
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Install actionlint
+        id: install
+        run: |
+          curl -O https://raw.githubusercontent.com/rhysd/actionlint/main/.github/actionlint-matcher.json
+          echo "::add-matcher::actionlint-matcher.json"
+          bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+      - name: Run actionlint
+        run: |
+          '${{ steps.install.outputs.executable }}' -color
+
+  tox-lint:
+    name: tox run -e lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Install tox & uv
+        run: |
+          sudo snap install --classic astral-uv
+          pipx install tox
+      - name: Run linters
+        run: tox run -e lint

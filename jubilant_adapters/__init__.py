@@ -80,3 +80,12 @@ def temp_model_fixture(
                     exc.stdout,
                     exc.stderr,
                 )
+
+
+__all__ = [
+    "JujuFixture",
+    "gather",
+    "temp_model_fixture",
+]
+
+__version__ = "0.1.0"

@@ -1,0 +1,29 @@
+name: Tests
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+
+
+jobs:
+  # TODO: use DP workflows once it supports uv.
+  lint:
+    name: Lint
+    uses: ./.github/workflows/lint.yaml
+
+  unit-test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Install tox & uv
+        run: |
+          sudo snap install --classic astral-uv
+          pipx install tox
+      - name: Run tests
+        run: tox run -e tests
