@@ -1,6 +1,6 @@
 # jubilant_adapters
 
-[![PyPI version](https://badge.fury.io/py/jubilant-adapters.svg)](https://pypi.org/project/jubilant-adapters/) [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![PyPI version](https://badge.fury.io/py/jubilant-adapters.svg)](https://pypi.org/project/jubilant-adapters/) [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff) [![Checked with pyright](https://microsoft.github.io/pyright/img/pyright_badge.svg)](https://microsoft.github.io/pyright/)
 
 
 **Jubilant Adapters** is a *back-to-basics* effort to facilitate migration of charm repositories using `pytest-operator` as their integration testing library, to the newer and better `jubilant` library. By *back-to-basics*, I mean pure Gang of Four design patterns, instead of blindly throwing in developers, LLMs and/or agents and burning token, CI and developer budget for something that could be achieved much simpler, with a software engineering mindset.
