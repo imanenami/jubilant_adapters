@@ -108,7 +108,7 @@ class MachineAdapter:
     @property
     def agent_status(self) -> str:
         """Return the machine agent status, e.g. 'started', 'running', etc."""
-        return self._juju.status().machines[self.id].machine_status.current
+        return self._juju.status().machines[self.id].juju_status.current
 
     @property
     def dns_name(self) -> str | None:
@@ -119,6 +119,16 @@ class MachineAdapter:
     def hostname(self) -> str | None:
         """Get the hostname for this machine, e.g. juju-8149c9-2."""
         return self._juju.status().machines[self.id].hostname
+
+    @property
+    def status(self):
+        """Returns the current machine provisioning status string."""
+        return self._juju.status().machines[self.id].machine_status.current
+
+    @property
+    def status_message(self):
+        """Returns the current machine provisioning status message."""
+        return self._juju.status().machines[self.id].machine_status.message
 
 
 class UnitAdapter:
