@@ -88,4 +88,4 @@ __all__ = [
     "temp_model_fixture",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
