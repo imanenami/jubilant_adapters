@@ -1,5 +1,8 @@
 # jubilant_adapters
 
+[![PyPI version](https://badge.fury.io/py/jubilant-adapters.svg)](https://badge.fury.io/py/jubilant-adapters) [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+
 **Jubilant Adapters** is a *back-to-basics* effort to facilitate migration of charm repositories using `pytest-operator` as their integration testing library, to the newer and better `jubilant` library. By *back-to-basics*, I mean pure Gang of Four design patterns, instead of blindly throwing in developers, LLMs and/or agents and burning token, CI and developer budget for something that could be achieved much simpler, with a software engineering mindset.
 
 The way it works is to add `jubilant_adpaters` as a test dependency, use the `JujuFixture` provided by that lib as the pivot fixture instead of `OpsTest`, and simply replace all `ops_test` calls with `juju.ext`. I have also included a utility script which does that for you, but it is opinionated and may not work optimally in your particular case. But the general flow remains the same regardless of whether or not you use the utility script.
