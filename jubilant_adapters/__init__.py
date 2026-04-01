@@ -37,7 +37,7 @@ class JujuFixture(Juju):
     def old_cli(self, *cmd: str, **kwargs: Any) -> tuple[int, str, str]:
         """Old method signature compatible with `ops_test.juju`."""
         try:
-            stdout = self.cli(*cmd)
+            stdout = self.cli(*cmd, include_model=False)
             stderr = ""
             returncode = 0
         except CLIError as e:
