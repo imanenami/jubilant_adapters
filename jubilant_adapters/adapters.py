@@ -474,7 +474,7 @@ class ModelAdapter:
         if series:
             base = {
                 "focal": "ubuntu@20.04",
-                "jammy": "ubunutu@22.04",
+                "jammy": "ubuntu@22.04",
                 "noble": "ubuntu@24.04",
             }.get(series)
         self._juju.deploy(
