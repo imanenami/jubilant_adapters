@@ -544,13 +544,24 @@ class ModelAdapter:
         relation_ids_pre = {relation.id for relation in self.relations}
         self._juju.integrate(relation1, relation2)
         logger.debug("Waiting for relation to be added.")
-        self._juju.wait(
-            lambda status: len(list(self.relations)) > len(relation_ids_pre), successes=1, delay=5
-        )
-        relations_post = list(self.relations)
-        relation_ids_post = {relation.id for relation in relations_post}
-        rel_id = next(iter(relation_ids_post - relation_ids_pre))
-        return next(iter(relation for relation in relations_post if relation.id == rel_id))
+        try:
+            self._juju.wait(
+                lambda status: len(list(self.relations)) > len(relation_ids_pre),
+                successes=1,
+                delay=5,
+                timeout=120,
+            )
+            relations_post = list(self.relations)
+            relation_ids_post = {relation.id for relation in relations_post}
+            rel_id = next(iter(relation_ids_post - relation_ids_pre))
+            return next(iter(relation for relation in relations_post if relation.id == rel_id))
+        except TimeoutError:
+            # This happens for subordinate relations, return a best effort RelationInfo.
+            _app1 = relation1.split(":")[0]
+            _app2 = relation2.split(":")[0]
+            _status = self._juju.status()
+            _app = _app1 if len(_status.apps[_app1].units) > 0 else _app2
+            return RelationInfo(_app, relation1, relation2, raw={})
 
     add_relation = integrate
     relate = integrate
