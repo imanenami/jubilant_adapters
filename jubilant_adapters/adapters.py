@@ -470,6 +470,13 @@ class ModelAdapter:
         if num_units > 0:
             kwargs = {"num_units": num_units}
         _revision = int(revision) if revision else None
+        # resolve series
+        if series:
+            base = {
+                "focal": "ubuntu@20.04",
+                "jammy": "ubunutu@22.04",
+                "noble": "ubuntu@24.04",
+            }.get(series)
         self._juju.deploy(
             entity_url,
             app=application_name,
