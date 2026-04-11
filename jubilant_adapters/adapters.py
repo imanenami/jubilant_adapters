@@ -709,8 +709,8 @@ class ModelAdapter:
             return
 
         self._juju.wait(
-            lambda status: (
-                sum(len(status.apps[app].units) for app in _apps) == wait_for_exact_units
+            lambda status: all(
+                len(status.apps[app].units) == wait_for_exact_units for app in _apps
             ),
             error=error_func,
             delay=delay,
