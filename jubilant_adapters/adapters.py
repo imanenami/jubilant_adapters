@@ -68,7 +68,7 @@ class ActionAdapter:
 
     def __init__(self, task: Task, failed: bool = False):
         self.task = task
-        self.status = "failed" if failed else "succeeded"
+        self.status = "failed" if failed else "completed"
         self.results = task.results
         self.results["return-code"] = task.return_code
 
