@@ -13,6 +13,7 @@ from os import PathLike
 from pathlib import Path
 from typing import Any, Literal
 
+import tenacity
 import yaml
 
 from ._juju_version import JUJU_MAJOR_VERSION
@@ -22,8 +23,6 @@ if JUJU_MAJOR_VERSION == 2:
         Juju,
         Status,
         TaskError,
-        all_agents_idle,
-        any_error,
     )
     from jubilant_backports.statustypes import UnitStatus
 else:
@@ -31,15 +30,27 @@ else:
         Juju,
         Status,
         TaskError,
-        all_agents_idle,
-        any_error,
     )
     from jubilant.statustypes import UnitStatus
 
+from jubilant import CLIError
+from jubilant_backports import CLIError as CompatCLIError
+
 from .typedefs import CT, RelationInfo
-from .utils import all_active_idle, all_statuses_are
+from .utils import all_active_idle, all_agents_idle, all_statuses_are, any_error
 
 logger = logging.getLogger(__name__)
+
+
+RETRY_ATTEMPTS = 1 if JUJU_MAJOR_VERSION >= 3 else 5
+
+
+retriable_on_cli_error = tenacity.retry(
+    retry=tenacity.retry_if_exception_type((CLIError, CompatCLIError)),
+    wait=tenacity.wait_fixed(6),
+    stop=tenacity.stop_after_attempt(RETRY_ATTEMPTS),
+    reraise=True,
+)
 
 
 def gather(*calls: Any) -> None:
@@ -80,7 +91,7 @@ class ActionAdapter:
     def __init__(self, task: CT.Task, failed: bool = False):
         self.task = task
         self.status = "failed" if failed else "completed"
-        self.results = task.results
+        self.results = getattr(task, "results", {})
         self.results["return-code"] = task.return_code
 
     def wait(self) -> "ActionAdapter":
@@ -632,6 +643,7 @@ class ModelAdapter:
         self._juju.update_secret(name, content=content, info=info, name=new_name)
 
     # TODO: add support for wait_for_... args
+    @retriable_on_cli_error
     def wait_for_idle(
         self,
         apps: Iterable[str] | None = None,
@@ -691,7 +703,7 @@ class ModelAdapter:
             When set, takes precedence over the `wait_for_units` parameter.
         """
 
-        def _all_idle_with_status(juju_status: Status, *apps: str):
+        def _all_idle_with_status(juju_status: CT.Status, *apps: str):
             return all_agents_idle(juju_status, *apps) and all_statuses_are(
                 status or "active", juju_status, apps
             )

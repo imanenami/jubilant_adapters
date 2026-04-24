@@ -31,7 +31,7 @@ def gather(*calls: Any) -> None:
     pass
 
 
-class JujuFixture(Juju):
+class JujuFixture(Juju):  # pyright: ignore[reportGeneralTypeIssues]
     """Juju Fixture object with legacy extension."""
 
     def __init__(self, *, model=None, wait_timeout=3 * 60, cli_binary=None):

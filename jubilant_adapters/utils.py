@@ -2,17 +2,18 @@
 
 import logging
 from collections.abc import Iterable
+from typing import cast
 
-from jubilant import (
-    Status,
-    all_active,
-    all_agents_idle,
-)
+import jubilant
+import jubilant_backports as compat
+
+from ._juju_version import JUJU_MAJOR_VERSION
+from .typedefs import CT
 
 logger = logging.getLogger(__name__)
 
 
-def all_statuses_are(expected: str, status: Status, apps: Iterable[str]) -> bool:
+def all_statuses_are(expected: str, status: CT.Status, apps: Iterable[str]) -> bool:
     """Return True if all units and apps have the `expected` status."""
     if not apps:
         apps = status.apps
@@ -29,11 +30,28 @@ def all_statuses_are(expected: str, status: Status, apps: Iterable[str]) -> bool
     return True
 
 
-def all_active_idle(status: Status, *apps: str) -> bool:
+def all_active_idle(status: CT.Status, *apps: str) -> bool:
     """Return True if all units are active|idle."""
-    return all_agents_idle(status, *apps) and all_active(status, *apps)
+    if JUJU_MAJOR_VERSION == 2:
+        status = cast(compat.Status, status)
+        return compat.all_agents_idle(status, *apps) and compat.all_active(status, *apps)
+    status = cast(jubilant.Status, status)
+    return jubilant.all_agents_idle(status, *apps) and jubilant.all_active(status, *apps)
 
 
-def unit_name_to_app(name: str) -> str:
-    """Convert unit name to app name."""
-    return name.split("/")[0]
+def all_agents_idle(status: CT.Status, *apps: str) -> bool:
+    """Report whether all unit agents in *status* (filtered to *apps* if provided) are "idle"."""
+    if JUJU_MAJOR_VERSION == 2:
+        status = cast(compat.Status, status)
+        return compat.all_agents_idle(status, *apps)
+    status = cast(jubilant.Status, status)
+    return jubilant.all_agents_idle(status, *apps)
+
+
+def any_error(status: CT.Status, *apps: str) -> bool:
+    """Report whether any app or unit in *status* (or in *apps* if provided) is "error"."""
+    if JUJU_MAJOR_VERSION == 2:
+        status = cast(compat.Status, status)
+        return compat.any_error(status, *apps)
+    status = cast(jubilant.Status, status)
+    return jubilant.any_error(status, *apps)

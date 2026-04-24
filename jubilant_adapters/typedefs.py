@@ -7,9 +7,12 @@ from typing import Any, TypedDict
 import jubilant
 import jubilant_backports as compat
 
-from .utils import unit_name_to_app
-
 logger = logging.getLogger(__name__)
+
+
+def _unit_name_to_app(name: str) -> str:
+    """Convert unit name to app name."""
+    return name.split("/")[0]
 
 
 class CT:
@@ -20,7 +23,8 @@ class CT:
     Devices = Any
     Juju = jubilant.Juju | compat.Juju
     ShowUnitOutput = dict
-    Task = jubilant.Task | compat.Task
+    Status = jubilant.Status | compat.Status
+    Task = jubilant.Task | compat.Task | compat.ExecTask
 
     class StorageInfo(TypedDict):
         """JSON type of Storage returned by `juju list-storage`."""
@@ -69,7 +73,7 @@ class RelationInfo:
     @property
     def is_peer(self) -> bool:
         """Is this a peer relation?"""
-        apps = {unit_name_to_app(unit_name) for unit_name in self.raw["related-units"]}
+        apps = {_unit_name_to_app(unit_name) for unit_name in self.raw["related-units"]}
         return not bool(apps - {self.app})
 
     @property
@@ -78,6 +82,6 @@ class RelationInfo:
         name = self.raw.get("related-endpoint", "")
         app = ""
         if related_units := self.raw.get("related-units", {}):
-            app = unit_name_to_app(next(iter(related_units)))
+            app = _unit_name_to_app(next(iter(related_units)))
 
         return RequiresInfo(name=name, application_name=app)
