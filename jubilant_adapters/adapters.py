@@ -19,10 +19,8 @@ from ._juju_version import JUJU_MAJOR_VERSION
 
 if JUJU_MAJOR_VERSION == 2:
     from jubilant_backports import (
-        ConfigValue,
         Juju,
         Status,
-        Task,
         TaskError,
         all_agents_idle,
         any_error,
@@ -30,10 +28,8 @@ if JUJU_MAJOR_VERSION == 2:
     from jubilant_backports.statustypes import UnitStatus
 else:
     from jubilant import (
-        ConfigValue,
         Juju,
         Status,
-        Task,
         TaskError,
         all_agents_idle,
         any_error,
@@ -81,7 +77,7 @@ class LibjujuStatusDict(UserDict):
 class ActionAdapter:
     """Action model adapter for libjuju."""
 
-    def __init__(self, task: Task, failed: bool = False):
+    def __init__(self, task: CT.Task, failed: bool = False):
         self.task = task
         self.status = "failed" if failed else "completed"
         self.results = task.results
@@ -324,7 +320,7 @@ class ApplicationAdapter:
 
         self._juju.cli("scale-application", self.name, f"{scale}")
 
-    def set_config(self, config: Mapping[str, ConfigValue]) -> None:
+    def set_config(self, config: Mapping[str, CT.ConfigValue]) -> None:
         """Set configuration options for this application."""
         self._juju.config(self.name, values=config)
 
@@ -424,7 +420,7 @@ class ModelAdapter:
         application_name: str | None = None,
         bind: dict[str, str] = {},  # noqa
         channel: str | None = None,
-        config: dict[str, ConfigValue] | None = None,
+        config: dict[str, CT.ConfigValue] | None = None,
         constraints: CT.Constraints = None,
         force: bool = False,
         num_units: int = 1,
@@ -612,7 +608,7 @@ class ModelAdapter:
             timeout=timeout,
         )
 
-    def set_config(self, config: Mapping[str, ConfigValue]) -> None:
+    def set_config(self, config: Mapping[str, CT.ConfigValue]) -> None:
         """Set configuration options for this application."""
         self._juju.model_config(values=config)
 

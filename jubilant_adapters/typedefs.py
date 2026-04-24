@@ -4,6 +4,9 @@ import logging
 from dataclasses import dataclass
 from typing import Any, TypedDict
 
+import jubilant
+import jubilant_backports as compat
+
 from .utils import unit_name_to_app
 
 logger = logging.getLogger(__name__)
@@ -12,9 +15,12 @@ logger = logging.getLogger(__name__)
 class CT:
     """Python types defined for compatibility reasons."""
 
+    ConfigValue = jubilant.ConfigValue | compat.ConfigValue
     Constraints = Any
     Devices = Any
+    Juju = jubilant.Juju | compat.Juju
     ShowUnitOutput = dict
+    Task = jubilant.Task | compat.Task
 
     class StorageInfo(TypedDict):
         """JSON type of Storage returned by `juju list-storage`."""
