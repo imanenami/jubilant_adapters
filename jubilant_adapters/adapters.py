@@ -25,8 +25,8 @@ from jubilant import (
 )
 from jubilant.statustypes import UnitStatus
 
-from .typedefs import CT, RelationInfo
-from .utils import all_active_idle, all_statuses_are
+from .typedefs import CT, JujuController, RelationInfo
+from .utils import all_active_idle, all_statuses_are, execute
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,19 @@ logger = logging.getLogger(__name__)
 def gather(*calls: Any) -> None:
     """Placeholder function to replace asyncio.gather calls."""
     pass
+
+
+def get_current_controller() -> JujuController | None:
+    """Return the current Juju controller."""
+    raw = execute("juju controllers --format json")
+    _json = json.loads(raw)
+    current_controller = _json.get("current-controller", "")
+    if not current_controller:
+        return None
+    return JujuController(
+        name=current_controller,
+        version=_json.get("controllers", {}).get(current_controller, {}).get("agent-version"),
+    )
 
 
 class LibjujuStatusDict(UserDict):
@@ -470,8 +483,8 @@ class ModelAdapter:
         if num_units > 0:
             kwargs = {"num_units": num_units}
         _revision = int(revision) if revision else None
-        # resolve series
-        if series:
+        # resolve series for juju 3
+        if series and (cc := get_current_controller()) and cc.major_version > 2:
             base = {
                 "focal": "ubuntu@20.04",
                 "jammy": "ubuntu@22.04",

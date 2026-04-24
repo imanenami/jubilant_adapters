@@ -1,6 +1,7 @@
 """Utility & helpers module."""
 
 import logging
+import subprocess
 from collections.abc import Iterable
 
 from jubilant import (
@@ -10,6 +11,19 @@ from jubilant import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def execute(cmd, cwd: str | None = None, env: dict | None = None, timeout: int = 120) -> str:
+    """Execute a command using shell and raise on error."""
+    return subprocess.check_output(
+        cmd,
+        shell=True,
+        universal_newlines=True,
+        stderr=subprocess.PIPE,
+        cwd=cwd,
+        env=env,
+        timeout=timeout,
+    )
 
 
 def all_statuses_are(expected: str, status: Status, apps: Iterable[str]) -> bool:
