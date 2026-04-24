@@ -31,7 +31,10 @@ class JujuController:
 
 def get_current_controller() -> JujuController | None:
     """Return the current Juju controller."""
-    raw = _execute("juju controllers --format json")
+    try:
+        raw = _execute("juju controllers --format json")
+    except subprocess.CalledProcessError:
+        return None
     _json = json.loads(raw)
     current_controller = _json.get("current-controller", "")
     if not current_controller:
