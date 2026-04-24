@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "jubilant>=1.7.0",
+    "jubilant-backports (>=1.4.0,<2.0.0)",
 ]
 
 [project.urls]

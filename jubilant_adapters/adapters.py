@@ -14,19 +14,34 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from jubilant import (
-    ConfigValue,
-    Juju,
-    Status,
-    Task,
-    TaskError,
-    all_agents_idle,
-    any_error,
-)
-from jubilant.statustypes import UnitStatus
 
-from .typedefs import CT, JujuController, RelationInfo
-from .utils import all_active_idle, all_statuses_are, execute
+from ._juju_version import JUJU_MAJOR_VERSION
+
+if JUJU_MAJOR_VERSION == 2:
+    from jubilant_backports import (
+        ConfigValue,
+        Juju,
+        Status,
+        Task,
+        TaskError,
+        all_agents_idle,
+        any_error,
+    )
+    from jubilant_backports.statustypes import UnitStatus
+else:
+    from jubilant import (
+        ConfigValue,
+        Juju,
+        Status,
+        Task,
+        TaskError,
+        all_agents_idle,
+        any_error,
+    )
+    from jubilant.statustypes import UnitStatus
+
+from .typedefs import CT, RelationInfo
+from .utils import all_active_idle, all_statuses_are
 
 logger = logging.getLogger(__name__)
 
@@ -34,19 +49,6 @@ logger = logging.getLogger(__name__)
 def gather(*calls: Any) -> None:
     """Placeholder function to replace asyncio.gather calls."""
     pass
-
-
-def get_current_controller() -> JujuController | None:
-    """Return the current Juju controller."""
-    raw = execute("juju controllers --format json")
-    _json = json.loads(raw)
-    current_controller = _json.get("current-controller", "")
-    if not current_controller:
-        return None
-    return JujuController(
-        name=current_controller,
-        version=_json.get("controllers", {}).get(current_controller, {}).get("agent-version"),
-    )
 
 
 class LibjujuStatusDict(UserDict):
@@ -484,7 +486,7 @@ class ModelAdapter:
             kwargs = {"num_units": num_units}
         _revision = int(revision) if revision else None
         # resolve series for juju 3
-        if series and (cc := get_current_controller()) and cc.major_version > 2:
+        if series and JUJU_MAJOR_VERSION > 2:
             base = {
                 "focal": "ubuntu@20.04",
                 "jammy": "ubuntu@22.04",

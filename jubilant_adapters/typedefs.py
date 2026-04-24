@@ -75,16 +75,3 @@ class RelationInfo:
             app = unit_name_to_app(next(iter(related_units)))
 
         return RequiresInfo(name=name, application_name=app)
-
-
-@dataclass
-class JujuController:
-    """Juju controller data repr."""
-
-    name: str
-    version: str
-
-    @property
-    def major_version(self) -> int:
-        """Return the major Juju version."""
-        return int(self.version.split(".")[0])
