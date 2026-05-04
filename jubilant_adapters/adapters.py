@@ -388,7 +388,7 @@ class ModelAdapter:
 
     def add_secret(
         self, name: str, data_args: Iterable[str], file: str = "", info: str = ""
-    ) -> None:
+    ) -> str:
         """Adds a secret with a list of key values.
 
         Equivalent to the cli command:
@@ -407,7 +407,7 @@ class ModelAdapter:
             k, v = arg.split("=")
             content[k] = v
 
-        self._juju.add_secret(name, content=content, info=info)
+        return self._juju.add_secret(name, content=content, info=info)
 
     def block_until(
         self, *conditions: Callable, timeout: float | None = None, wait_period: float = 0.5
