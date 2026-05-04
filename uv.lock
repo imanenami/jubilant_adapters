@@ -152,14 +152,14 @@ wheels = [
 
 [[package]]
 name = "jubilant"
-version = "1.7.0"
+version = "1.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cc/0b/275edac8b57b0aac34f84073997660ebf536f97d2fa0d85a2cc3321047b6/jubilant-1.7.0.tar.gz", hash = "sha256:46b7c29a4f3336ab16d77d88418dbf8c9d0746e3f80ef42ee4c2d103eff79650", size = 32455, upload-time = "2026-01-29T02:40:10.335Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f6/5e/7d321fc4d34ccd3ab57312598b553dea54b8c0c1215e1f8670d05e90c898/jubilant-1.9.0.tar.gz", hash = "sha256:0a8116d4237dd60755935343d1dc7a61f48028495bd1d0b020dc57c96768c9a9", size = 33880, upload-time = "2026-04-29T23:21:08.374Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/86/d5/5b95ae9ab5abf283e33c802d286045abda7d826396ba417d5d3a20201b24/jubilant-1.7.0-py3-none-any.whl", hash = "sha256:1dcd70eb10299a95ae9fab405a3ce5f01a15513776b7f8eb4cf7b02808c93cdf", size = 33396, upload-time = "2026-01-29T02:40:09.222Z" },
+    { url = "https://files.pythonhosted.org/packages/ec/30/9ad50955750ee21f9c005b5496c85edf3218678df419062b3fd355558537/jubilant-1.9.0-py3-none-any.whl", hash = "sha256:1cacd96361fe77d3ea124483bb7a7d4ff0f96412bcd0c0bf32698e685aa77c37", size = 34779, upload-time = "2026-04-29T23:21:06.88Z" },
 ]
 
 [[package]]
