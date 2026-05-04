@@ -13,22 +13,44 @@ from os import PathLike
 from pathlib import Path
 from typing import Any, Literal
 
+import tenacity
 import yaml
-from jubilant import (
-    ConfigValue,
-    Juju,
-    Status,
-    Task,
-    TaskError,
-    all_agents_idle,
-    any_error,
-)
-from jubilant.statustypes import UnitStatus
+
+from ._juju_version import JUJU_MAJOR_VERSION
+
+if JUJU_MAJOR_VERSION == 2:
+    from jubilant_backports import (
+        Juju,
+        Status,
+        TaskError,
+    )
+    from jubilant_backports.statustypes import UnitStatus
+else:
+    from jubilant import (
+        Juju,
+        Status,
+        TaskError,
+    )
+    from jubilant.statustypes import UnitStatus
+
+from jubilant import CLIError
+from jubilant_backports import CLIError as CompatCLIError
 
 from .typedefs import CT, RelationInfo
-from .utils import all_active_idle, all_statuses_are
+from .utils import all_active_idle, all_agents_idle, all_statuses_are, any_error
 
 logger = logging.getLogger(__name__)
+
+
+RETRY_ATTEMPTS = 1 if JUJU_MAJOR_VERSION >= 3 else 5
+
+
+retriable_on_cli_error = tenacity.retry(
+    retry=tenacity.retry_if_exception_type((CLIError, CompatCLIError)),
+    wait=tenacity.wait_fixed(6),
+    stop=tenacity.stop_after_attempt(RETRY_ATTEMPTS),
+    reraise=True,
+)
 
 
 def gather(*calls: Any) -> None:
@@ -66,10 +88,10 @@ class LibjujuStatusDict(UserDict):
 class ActionAdapter:
     """Action model adapter for libjuju."""
 
-    def __init__(self, task: Task, failed: bool = False):
+    def __init__(self, task: CT.Task, failed: bool = False):
         self.task = task
         self.status = "failed" if failed else "completed"
-        self.results = task.results
+        self.results = getattr(task, "results", {})
         self.results["return-code"] = task.return_code
 
     def wait(self) -> "ActionAdapter":
@@ -309,7 +331,7 @@ class ApplicationAdapter:
 
         self._juju.cli("scale-application", self.name, f"{scale}")
 
-    def set_config(self, config: Mapping[str, ConfigValue]) -> None:
+    def set_config(self, config: Mapping[str, CT.ConfigValue]) -> None:
         """Set configuration options for this application."""
         self._juju.config(self.name, values=config)
 
@@ -409,7 +431,7 @@ class ModelAdapter:
         application_name: str | None = None,
         bind: dict[str, str] = {},  # noqa
         channel: str | None = None,
-        config: dict[str, ConfigValue] | None = None,
+        config: dict[str, CT.ConfigValue] | None = None,
         constraints: CT.Constraints = None,
         force: bool = False,
         num_units: int = 1,
@@ -470,8 +492,8 @@ class ModelAdapter:
         if num_units > 0:
             kwargs = {"num_units": num_units}
         _revision = int(revision) if revision else None
-        # resolve series
-        if series:
+        # resolve series for juju 3
+        if series and JUJU_MAJOR_VERSION > 2:
             base = {
                 "focal": "ubuntu@20.04",
                 "jammy": "ubuntu@22.04",
@@ -597,7 +619,7 @@ class ModelAdapter:
             timeout=timeout,
         )
 
-    def set_config(self, config: Mapping[str, ConfigValue]) -> None:
+    def set_config(self, config: Mapping[str, CT.ConfigValue]) -> None:
         """Set configuration options for this application."""
         self._juju.model_config(values=config)
 
@@ -621,6 +643,7 @@ class ModelAdapter:
         self._juju.update_secret(name, content=content, info=info, name=new_name)
 
     # TODO: add support for wait_for_... args
+    @retriable_on_cli_error
     def wait_for_idle(
         self,
         apps: Iterable[str] | None = None,
@@ -680,7 +703,7 @@ class ModelAdapter:
             When set, takes precedence over the `wait_for_units` parameter.
         """
 
-        def _all_idle_with_status(juju_status: Status, *apps: str):
+        def _all_idle_with_status(juju_status: CT.Status, *apps: str):
             return all_agents_idle(juju_status, *apps) and all_statuses_are(
                 status or "active", juju_status, apps
             )

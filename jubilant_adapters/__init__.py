@@ -7,11 +7,19 @@ from collections.abc import Generator, Mapping
 from contextlib import contextmanager
 from typing import Any
 
-from jubilant import (
-    CLIError,
-    ConfigValue,
-    Juju,
-)
+from ._juju_version import JUJU_MAJOR_VERSION
+from .typedefs import CT
+
+if JUJU_MAJOR_VERSION == 2:
+    from jubilant_backports import (
+        CLIError,
+        Juju,
+    )
+else:
+    from jubilant import (
+        CLIError,
+        Juju,
+    )
 
 from .adapters import LegacyExtensions
 
@@ -23,7 +31,7 @@ def gather(*calls: Any) -> None:
     pass
 
 
-class JujuFixture(Juju):
+class JujuFixture(Juju):  # pyright: ignore[reportGeneralTypeIssues]
     """Juju Fixture object with legacy extension."""
 
     def __init__(self, *, model=None, wait_timeout=3 * 60, cli_binary=None):
@@ -55,7 +63,7 @@ def temp_model_fixture(
     keep: bool = False,
     controller: str | None = None,
     cloud: str | None = None,
-    config: Mapping[str, ConfigValue] | None = None,
+    config: Mapping[str, CT.ConfigValue] | None = None,
     credential: str | None = None,
 ) -> Generator[JujuFixture]:
     """Context manager to create a temporary model for running tests in."""
