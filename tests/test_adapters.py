@@ -1,6 +1,10 @@
+"""Basic adapter tests."""
+
 import pytest
+from fixtures import STATUS
 
 from jubilant_adapters import JujuFixture
+from jubilant_adapters.adapters import LibjujuStatusDict
 
 TEST_MODEL = "testing"
 
@@ -31,3 +35,8 @@ def test_add_secret(juju: JujuFixture, capsys: pytest.CaptureFixture):
     cmd_args = captured.out.split()
     assert "add-secret" in cmd_args
     assert "--file" in cmd_args
+
+
+def test_status_dict():
+    status_dict = LibjujuStatusDict(STATUS["cos"])
+    assert "applications" in status_dict
