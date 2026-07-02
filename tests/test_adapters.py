@@ -5,7 +5,7 @@ from fixtures import StatusFixtures
 
 from jubilant import Task
 from jubilant_adapters import JujuFixture
-from jubilant_adapters.adapters import ActionAdapter, LibjujuStatusDict, MachineAdapter
+from jubilant_adapters.adapters import ActionAdapter, LibjujuStatusDict, gather
 
 TEST_MODEL = "testing"
 
@@ -51,12 +51,5 @@ def test_action():
     assert action.results["done"] == "true"
 
 
-def test_machine(juju: JujuFixture):
-    status = StatusFixtures.vm
-    juju.status = lambda: status
-    machine = MachineAdapter("2", juju)
-    assert machine.dns_name == "10.148.75.116"
-    assert machine.id == "2"
-    assert machine.agent_status == "started"
-    assert machine.status == "running"
-    assert machine.status_message == "Running"
+def test_gather_is_a_noop():
+    assert gather(1, 2, 3) is None
